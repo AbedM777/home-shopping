@@ -9,3 +9,5 @@ window.FIREBASE_CONFIG = {
 };
 // Web push key (Firebase console → Project settings → Cloud Messaging → Web Push certificates).
 window.VAPID_KEY = "BNyL0K0aoVaTyDYHqRd3smsTrvI6XfO_g7BrY5dvWj6VrjkaG0-0jQg0lRFazn457SkbusKAKN_cajXKHdCxRJM";
+// Sends the "products were added" notification to the family's other phones.
+window.NOTIFY_URL = "https://notify-new-items-467898336974.europe-west1.run.app/";
