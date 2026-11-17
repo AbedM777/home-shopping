@@ -1,0 +1,8 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{coll}/{doc} {
+      allow read, write: if coll.matches('hb_[A-Za-z0-9]{20,}_(items|months|defaults|devices)');
+    }
+  }
+}

@@ -8,6 +8,9 @@
   } catch (e) {}
   if (code && !m) { try { history.replaceState(null, "", location.pathname + location.search + "#k=" + code); } catch (e) {} }
   window.FAMILY_CODE = code;
+  var dev = null;
+  try { dev = localStorage.getItem("deviceId"); if (!dev) { dev = "d" + Math.random().toString(36).slice(2, 12) + Date.now().toString(36); localStorage.setItem("deviceId", dev); } } catch (e) { dev = "d" + Math.random().toString(36).slice(2, 12); }
+  window.DEVICE_ID = dev;
 
   function makeDb(fs, prefix) {
     var mapPath = function (path) { var seg = path.split("/"); seg[0] = prefix + seg[0]; return seg.join("/"); };

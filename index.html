@@ -63,7 +63,9 @@ button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
 
 header { background: var(--bg); padding-block: 18px 12px; display: grid; gap: 10px; }
-.titlerow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.bell { border: 1px solid var(--accent); color: var(--accent); background: transparent; border-radius: 99px; padding: 5px 12px; font-weight: 700; font-size: .85rem; }
+.bell.on { border-color: var(--line); color: var(--muted); }
+.titlerow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 h1 { margin: 0; font-family: var(--f-display); font-weight: 700; font-size: 1.55rem; letter-spacing: -.01em; text-wrap: balance; }
 .month { font-size: .9rem; color: var(--muted); font-weight: 600; }
 .progress { display: grid; gap: 6px; }
@@ -147,6 +149,7 @@ main { display: grid; gap: 14px; margin-top: 6px; }
 </style>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script src="firebase-config.js"></script>
 <script src="db.js"></script>
 </head>
@@ -157,6 +160,7 @@ main { display: grid; gap: 14px; margin-top: 6px; }
   <header>
     <div class="titlerow">
       <h1>רשימת הקניות של הבית</h1>
+      <button type="button" class="bell" id="notifBtn" hidden>הפעלת התראות</button>
     </div>
     <div class="tabs" role="tablist" aria-label="תצוגה">
       <button type="button" role="tab" id="tMonth" aria-selected="true">רשימה חודשית</button>
@@ -230,6 +234,7 @@ main { display: grid; gap: 14px; margin-top: 6px; }
   const maxMonth = addMonths(curMonth, MAX_AHEAD);
   const isMonth = k => /^\d{4}-(0[1-9]|1[0-2])$/.test(k);
 
+  const DEVICE = window.DEVICE_ID || "unknown";
   const state = {
     db: null, canWrite: true, filter: "all",
     sel: curMonth, navigated: false,
@@ -401,7 +406,7 @@ main { display: grid; gap: 14px; margin-top: 6px; }
           if (ex.done) { await state.db.doc("items/" + ex.id).update({ done: false, boughtAt: null }); revived++; }
           else already++;
         } else {
-          await state.db.collection("items").add({ month: m, name: n.slice(0, 60), dept, done: false, boughtAt: null, created: Date.now() });
+          await state.db.collection("items").add({ month: m, name: n.slice(0, 60), dept, done: false, boughtAt: null, created: Date.now(), by: DEVICE, notified: false });
           byName.set(n, { done: false }); added++;
         }
       } catch (e) { onWriteError(e); return; }
@@ -434,7 +439,7 @@ main { display: grid; gap: 14px; margin-top: 6px; }
         const now = Date.now();
         for (let i = 0; i < todo.length; i += 4) {
           await Promise.all(todo.slice(i, i + 4).map(x =>
-            state.db.collection("items").add({ month: m, name: String(x.name), dept: String(x.dept || "other"), done: false, boughtAt: null, created: now })));
+            state.db.collection("items").add({ month: m, name: String(x.name), dept: String(x.dept || "other"), done: false, boughtAt: null, created: now, by: DEVICE, notified: false })));
           copied += Math.min(4, todo.length - i);
         }
       }
@@ -511,7 +516,7 @@ main { display: grid; gap: 14px; margin-top: 6px; }
       const now = Date.now();
       for (let i = 0; i < todo.length; i += 4) {
         await Promise.all(todo.slice(i, i + 4).map(x =>
-          state.db.collection("items").add({ month: m, name: x.name, dept: x.dept, done: false, boughtAt: null, created: now })));
+          state.db.collection("items").add({ month: m, name: x.name, dept: x.dept, done: false, boughtAt: null, created: now, by: DEVICE, notified: false })));
       }
       state.picking = false; state.pickSel.clear();
       toast("נוספו " + todo.length + " מוצרים לרשימה של " + fmtMonth(m));
@@ -560,6 +565,59 @@ main { display: grid; gap: 14px; margin-top: 6px; }
   els.tMonth.addEventListener("click", () => setView("month"));
   els.tDef.addEventListener("click", () => setView("defaults"));
   els.pickBtn.addEventListener("click", openPicker);
+
+  // ---------- notifications & icon badge ----------
+  const notifBtn = document.getElementById("notifBtn");
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const standalone = window.navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+  const pushCapable = "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
+
+  function renderBell() {
+    if (!state.db) { notifBtn.hidden = true; return; }
+    if (isIOS && !standalone) { notifBtn.hidden = false; notifBtn.className = "bell on"; notifBtn.textContent = "התראות: מהאייקון במסך הבית"; return; }
+    if (!pushCapable || !window.firebase || !firebase.messaging || !window.VAPID_KEY) { notifBtn.hidden = true; return; }
+    const p = Notification.permission;
+    notifBtn.hidden = false;
+    notifBtn.className = p === "granted" ? "bell on" : "bell";
+    notifBtn.textContent = p === "granted" ? "התראות פעילות" : p === "denied" ? "התראות חסומות" : "הפעלת התראות";
+  }
+
+  async function registerPush(prompt) {
+    try {
+      if (prompt) { const r = await Notification.requestPermission(); if (r !== "granted") { renderBell(); if (r === "denied") toast("ההתראות חסומות. אפשר לאשר אותן בהגדרות האייפון ← התראות ← קניות."); return; } }
+      if (Notification.permission !== "granted") return;
+      const reg = await navigator.serviceWorker.ready;
+      const token = await firebase.messaging().getToken({ vapidKey: window.VAPID_KEY, serviceWorkerRegistration: reg });
+      if (!token) return;
+      let known = null;
+      try { known = localStorage.getItem("pushToken"); } catch (e) {}
+      if (known !== token || prompt) {
+        await state.db.doc("devices/" + DEVICE).set({ token, unread: 0, updatedAt: Date.now(), ios: isIOS });
+        try { localStorage.setItem("pushToken", token); } catch (e) {}
+      }
+      if (prompt) toast("ההתראות הופעלו. תקבלו עדכון כשמישהו מוסיף מוצרים.");
+    } catch (e) {
+      if (prompt) toast("לא הצלחתי להפעיל התראות. נסו שוב בעוד רגע.");
+    }
+    renderBell();
+  }
+  notifBtn.addEventListener("click", () => {
+    if (isIOS && !standalone) { toast("כדי לקבל התראות, פתחו את האפליקציה מהאייקון במסך הבית."); return; }
+    if (Notification.permission === "granted") { toast("ההתראות כבר פעילות במכשיר הזה."); return; }
+    if (Notification.permission === "denied") { toast("ההתראות חסומות. אפשר לאשר אותן בהגדרות האייפון ← התראות ← קניות."); return; }
+    registerPush(true);
+  });
+
+  // opening the app clears the dot on the icon
+  let lastClear = 0;
+  async function clearBadge() {
+    try { if (navigator.clearAppBadge) await navigator.clearAppBadge(); } catch (e) {}
+    try { const r = await navigator.serviceWorker?.ready; r && r.getNotifications && (await r.getNotifications()).forEach(n => n.close()); } catch (e) {}
+    if (!state.db || Date.now() - lastClear < 5000) return;
+    lastClear = Date.now();
+    try { if (localStorage.getItem("pushToken")) await state.db.doc("devices/" + DEVICE).update({ unread: 0 }); } catch (e) {}
+  }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") clearBadge(); });
 
   // ---------- events ----------
   els.list.addEventListener("click", e => {
@@ -663,6 +721,9 @@ main { display: grid; gap: 14px; margin-top: 6px; }
       if (state.view === "defaults" || state.picking) render();
     }, () => { state.defLoaded = true; });
     subscribeItems();
+    renderBell();
+    clearBadge();
+    if (pushCapable && Notification.permission === "granted") registerPush(false);
   })();
 
   renderNav();
