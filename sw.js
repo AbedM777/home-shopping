@@ -1,5 +1,5 @@
 // App shell cache: the page opens even without a connection; Firestore keeps the list data offline itself.
-const CACHE = "kniyot-v1";
+const CACHE = "kniyot-v2";
 const SHELL = ["./", "index.html", "db.js", "firebase-config.js", "manifest.webmanifest", "icon-192.png", "apple-touch-icon.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
