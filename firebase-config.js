@@ -8,4 +8,4 @@ window.FIREBASE_CONFIG = {
   appId: "1:467898336974:web:108f7f7addc943834a729f"
 };
 // Web push key (Firebase console → Project settings → Cloud Messaging → Web Push certificates).
-window.VAPID_KEY = null;
+window.VAPID_KEY = "BNyL0K0aoVaTyDYHqRd3smsTrvI6XfO_g7BrY5dvWj6VrjkaG0-0jQg0lRFazn457SkbusKAKN_cajXKHdCxRJM";
